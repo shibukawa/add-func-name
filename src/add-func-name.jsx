@@ -70,6 +70,43 @@ class FileSystem
             return false;
         }
     }
+
+    static function copyFile(inputPath : string, outputPath : string) : boolean {
+        if (inputPath == outputPath)
+        {
+            return false;
+        }
+        try
+        {
+            node.fs.writeFileSync(outputPath, node.fs.readFileSync(inputPath));
+            return true;
+        }
+        catch (e : Error)
+        {
+            console.error("Can't copy: " + e.toString());
+            return false;
+        }
+    }
+
+    static function splitPath(path : string) : string[] {
+        var result = [] : string[];
+        while (true)
+        {
+            result.splice(0, 0, node.path.basename(path));
+            var parent = node.path.dirname(path);
+            if (parent == '.')
+            {
+                break;
+            }
+            else if (parent == '/')
+            {
+                result.splice(0, 0, parent);
+                break;
+            }
+            path = parent;
+        }
+        return result;
+    }
 }
 
 /**
@@ -102,22 +139,36 @@ class NameAnonymousFunc
      * @param rootInputDir input directory path
      * @param rootOutputDir output directory path
      */
-    function process(rootInputDir : string, rootOutputDir : string) : void
+    function process(rootInputDir : string, rootOutputDir : string, excludes : string[], verbose : boolean) : void
     {
+        if (!node.fs.existsSync(rootInputDir))
+        {
+            console.error("Input directory doesn't exist: " + rootInputDir);
+            return;
+        }
         FileSystem.walk(rootInputDir, (path, dirs, files) -> {
             var relativeDir = node.path.relative(rootInputDir, path);
+            var dirnames = FileSystem.splitPath(relativeDir);
+            for (var i = 0; i < dirnames.length; i++)
+            {
+                if (excludes.indexOf(dirnames[i]) != -1)
+                {
+                    return;
+                }
+            }
             var outputDir = node.path.join(rootOutputDir, relativeDir);
             var jsFiles = [] : string[];
+            var copyFiles = [] : string[];
             for (var i = 0; i < files.length; i++)
             {
-                if (node.path.extname(files[i]) == '.js')
+                if (node.path.extname(files[i]) == '.js' && excludes.indexOf(files[i]) == -1)
                 {
                     jsFiles.push(files[i]);
                 }
-            }
-            if (jsFiles.length == 0)
-            {
-                return;
+                else if (path != outputDir)
+                {
+                    copyFiles.push(files[i]);
+                }
             }
             if (!FileSystem.mkdirp(outputDir))
             {
@@ -127,37 +178,79 @@ class NameAnonymousFunc
             {
                 var inputPath = node.path.join(path, jsFiles[i]);
                 var outputPath = node.path.join(outputDir, jsFiles[i]);
-                this.modify(inputPath, outputPath);
+                if (verbose)
+                {
+                    console.log("processing: " + inputPath);
+                }
+                this.modify(inputPath, outputPath, verbose);
+            }
+            for (var i = 0; i < copyFiles.length; i++)
+            {
+                var inputPath = node.path.join(path, copyFiles[i]);
+                var outputPath = node.path.join(outputDir, copyFiles[i]);
+                if (verbose)
+                {
+                    console.log("copying: " + inputPath);
+                }
+                FileSystem.copyFile(inputPath, outputPath);
             }
         });
     }
 
-    function modify(inputPath : string, outputPath : string) : void
+    function modify(inputPath : string, outputPath : string, verbose : boolean) : void
     {
         var src = node.fs.readFileSync(inputPath, 'utf8');
-        var ast = esprima.parse(src, {comment : false});
-        this.traverse(ast as __noconvert__ Map.<variant>, (functionToken : EsprimaToken, stack : EsprimaToken[]) -> {
-            if (functionToken.id)
-            {
-                return;
-            }
-            //console.log(JSON.stringify(functionToken, null, 4));
-            if (stack.length > 0)
-            {
-                var parent = stack[stack.length -1];
-                if (parent.type == 'Property') {
-                    functionToken.id = this.generateName(parent.key.name);
+        var modified = false;
+        var ast : EsprimaBlockToken = null;
+        try
+        {
+            ast = esprima.parse(src, {tolerant : true});
+        }
+        catch (e : Error)
+        {
+            console.error("parse error: " + e.toString());
+        }
+        if (ast)
+        {
+            this.traverse(ast as __noconvert__ Map.<variant>, (functionToken : EsprimaToken, stack : EsprimaToken[]) -> {
+                if (functionToken.id)
+                {
+                    return;
                 }
-                else if (parent.type == 'VariableDeclarator') {
-                    functionToken.id = this.generateName(parent.id.name);
+                //console.log(JSON.stringify(functionToken, null, 4));
+                if (stack.length > 0)
+                {
+                    var parent = stack[stack.length -1];
+                    if (parent.type == 'Property') {
+                        functionToken.id = this.generateName(parent.key.name);
+                    }
+                    else if (parent.type == 'VariableDeclarator') {
+                        functionToken.id = this.generateName(parent.id.name);
+                    }
                 }
-            }
-            if (!functionToken.id)
+                if (!functionToken.id)
+                {
+                    functionToken.id = this.generateName();
+                }
+                modified = true;
+            });
+        }
+        if (modified)
+        {
+            if (verbose)
             {
-                functionToken.id = this.generateName();
+                console.log("    writing modified file");
             }
-        });
-        node.fs.writeFileSync(outputPath, escodegen.generate(ast));
+            node.fs.writeFileSync(outputPath, escodegen.generate(ast));
+        }
+        else
+        {
+            if (verbose)
+            {
+                console.log("    copying file (not modified)");
+            }
+            node.fs.writeFileSync(outputPath, src);
+        }
         //node.fs.writeFileSync(outputPath + '.json', JSON.stringify(ast, null, 4));
     }
 
@@ -204,11 +297,13 @@ class NameAnonymousFunc
 class _Main {
     static function main(argv : string[]) : void
     {
-        var parser = new BasicParser('o:(output)r(replace)h(help)', argv);
+        var parser = new BasicParser('o:(output)e:(exclude)r(replace)q(quite)h(help)', argv);
         var help = false;
         var output = '';
         var replace = false;
         var inputdirs = [] : string[];
+        var excludes = ['.git', '.hg', '.svn'];
+        var verbose = true;
 
         var opt = parser.getopt();
         while (opt)
@@ -223,6 +318,12 @@ class _Main {
                 break;
             case 'o':
                 output = opt.optarg;
+                break;
+            case 'e':
+                excludes.push(opt.optarg);
+                break;
+            case 'q':
+                verbose = false;
                 break;
             default:
                 inputdirs.push(opt.option);
@@ -240,9 +341,11 @@ command:
     name-anonymous-func [option] inputdir
 
 options:
-    -o, --output [output] : output directory
-    -r, --replace         : replace existing file
-    -h, --help
+    -o, --output [output]   : output directory
+    -e, --exclude [exclude] : exclude file/directory names
+    -r, --replace           : replace existing file
+    -q, --quiet             : don't write console
+    -h, --help              : show this message
 """);
             if (!help)
             {
@@ -267,7 +370,7 @@ options:
                 output = inputdirs[0];
             }
             var namer = new NameAnonymousFunc();
-            namer.process(inputdirs[0], output);
+            namer.process(inputdirs[0], output, excludes, verbose);
         }
     }
 }

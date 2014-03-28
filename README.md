@@ -30,6 +30,10 @@ $ add-func-name [option] input_folder
 
 ### option
 
+* `-e name`, `--exclude=name`
+
+   Filter file or/and folder by name. You can use this option several times.
+
 * `-o`, `--output`
 
     Output folder
@@ -38,11 +42,22 @@ $ add-func-name [option] input_folder
 
     Replace exisiting source code.
 
+* `-q`, `--quiet`
+
+    Stop console output
+
 * `-h`, `--help`
 
     Display help
 
 Usage Sample
+-------------------
+
+```js
+$ add-func-name -e node_modules -o sample_output sample
+```
+
+Sample Output
 -------------------
 
 ### Sample Input
