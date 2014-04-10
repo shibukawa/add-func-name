@@ -1,6 +1,6 @@
 {
   "name": "add-func-name",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Add temp name to anonymous function for debugging",
   "scripts": {
     "prepublish": "./node_modules/.bin/grunt build;./node_modules/.bin/grunt doc",
@@ -35,13 +35,15 @@
     "url": "git://github.com/shibukawa/add-func-name.git"
   },
   "devDependencies": {
-    "grunt-contrib-watch": "~0.5.3",
+    "escodegen.jsx": "~0.1.0",
+    "esprima.jsx": "~0.1.3",
+    "getopt.jsx": "~0.2.0",
     "grunt": "~0.4.1",
     "grunt-cli": "~0.1.13",
+    "grunt-contrib-watch": "~0.5.3",
     "grunt-jsx": ">=0.1.5",
-    "getopt.jsx": "~0.2.0",
-    "esprima.jsx": "~0.1.3",
-    "escodegen.jsx": "~0.1.0"
+    "nodejs.jsx": "^0.1.4",
+    "shutil.jsx": "^0.1.0"
   },
   "author": "shibukawa",
   "license": "GPL-V3",
