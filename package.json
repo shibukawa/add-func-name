@@ -1,6 +1,6 @@
 {
   "name": "add-func-name",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Add temp name to anonymous function for debugging",
   "scripts": {
     "prepublish": "./node_modules/.bin/grunt build;./node_modules/.bin/grunt doc",
